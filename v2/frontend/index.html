@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Interactive demo showing how adversarial attacks break image classifiers and how defenses can recover correct predictions.">
+    <title>Adversarial ML Demo — Attack & Defense Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ═══════════ Header ═══════════ -->
+    <header class="header">
+        <div class="header__badge">
+            <span>Live Demo</span>
+        </div>
+        <h1 class="header__title">Adversarial ML Demo</h1>
+        <p class="header__subtitle">
+            See how tiny, invisible perturbations can fool deep neural networks — and how defenses fight back.
+        </p>
+    </header>
+
+    <!-- ═══════════ Pipeline Steps ═══════════ -->
+    <nav class="pipeline" aria-label="Pipeline steps">
+        <div class="pipeline__step pipeline__step--active" data-step="1">
+            <span class="pipeline__step-number">1</span>
+            Upload
+        </div>
+        <span class="pipeline__arrow">→</span>
+        <div class="pipeline__step" data-step="2">
+            <span class="pipeline__step-number">2</span>
+            Classify
+        </div>
+        <span class="pipeline__arrow">→</span>
+        <div class="pipeline__step" data-step="3">
+            <span class="pipeline__step-number">3</span>
+            Attack
+        </div>
+        <span class="pipeline__arrow">→</span>
+        <div class="pipeline__step" data-step="4">
+            <span class="pipeline__step-number">4</span>
+            Defend
+        </div>
+    </nav>
+
+    <!-- ═══════════ Main Content ═══════════ -->
+    <main class="container">
+
+        <!-- Status Message -->
+        <div id="statusMessage" class="status"></div>
+
+        <!-- ─── Step 1: Upload Image ─── -->
+        <section class="card" id="uploadSection">
+            <div class="card__header">
+                <div class="card__icon">📤</div>
+                <div>
+                    <div class="card__title">Upload Image</div>
+                    <div class="card__description">Upload any image to start the adversarial demo pipeline</div>
+                </div>
+            </div>
+            <div class="upload-zone" id="uploadZone">
+                <span class="upload-zone__icon">🖼️</span>
+                <p class="upload-zone__text">Drag & drop an image here, or click to browse</p>
+                <p class="upload-zone__hint">Supports JPEG, PNG, WebP • Max 10MB</p>
+                <input type="file" id="fileInput" accept="image/*">
+            </div>
+        </section>
+
+        <!-- ─── Step 2: Original Classification ─── -->
+        <section class="card comparison" id="classificationSection">
+            <div class="card__header">
+                <div class="card__icon">🔍</div>
+                <div>
+                    <div class="card__title">Original Classification</div>
+                    <div class="card__description">ResNet18 prediction on your uploaded image</div>
+                </div>
+            </div>
+            <div class="results-grid">
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--info">Original Image</span>
+                    </div>
+                    <div class="image-display">
+                        <img id="originalImg" src="" alt="Original image">
+                        <span class="image-display__label image-display__label--original">Original</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--success">Top-5 Predictions</span>
+                    </div>
+                    <div class="predictions" id="originalPredictions">
+                        <p class="image-display__placeholder">Upload an image to see predictions</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Step 3: Adversarial Attack ─── -->
+        <section class="card card--attack comparison" id="attackSection">
+            <div class="card__header">
+                <div class="card__icon">⚔️</div>
+                <div>
+                    <div class="card__title">Adversarial Attack</div>
+                    <div class="card__description">PGD attack — tiny perturbations that fool the classifier</div>
+                </div>
+            </div>
+
+            <!-- Attack Controls -->
+            <div class="controls">
+                <div class="control-group">
+                    <label for="epsilonSlider">Epsilon (ε) — Perturbation Strength</label>
+                    <input type="range" id="epsilonSlider" min="0.01" max="0.3" step="0.005" value="0.03">
+                    <div class="value-display" id="epsilonValue">0.03</div>
+                </div>
+                <div class="control-group">
+                    <label for="alphaSlider">Alpha (α) — Step Size</label>
+                    <input type="range" id="alphaSlider" min="0.001" max="0.05" step="0.001" value="0.01">
+                    <div class="value-display" id="alphaValue">0.01</div>
+                </div>
+                <div class="control-group">
+                    <label for="itersSlider">Iterations</label>
+                    <input type="range" id="itersSlider" min="1" max="40" step="1" value="10">
+                    <div class="value-display" id="itersValue">10</div>
+                </div>
+                <button id="attackBtn" class="btn btn--attack" disabled>
+                    <span class="spinner"></span>
+                    ⚔️ Generate Attack
+                </button>
+            </div>
+            <p
+                style="font-size: 11px; color: var(--text-muted); margin-top: -12px; margin-bottom: 20px; text-align: center;">
+                Higher ε = stronger attack. If the attack doesn't work, increase ε.
+            </p>
+
+            <!-- Attack Results -->
+            <div class="results-grid results-grid--three">
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--danger">Adversarial Image</span>
+                    </div>
+                    <div class="image-display">
+                        <img id="adversarialImg" src="" alt="Adversarial image">
+                        <span class="image-display__label image-display__label--adversarial">Adversarial</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--danger">Perturbation Heatmap</span>
+                    </div>
+                    <div class="image-display">
+                        <img id="heatmapImg" src="" alt="Perturbation heatmap">
+                        <span class="image-display__label image-display__label--heatmap">Noise ×10</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--danger">Misclassification</span>
+                    </div>
+                    <div class="predictions" id="adversarialPredictions">
+                        <p class="image-display__placeholder">Run attack to see predictions</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Step 4: Defense ─── -->
+        <section class="card card--defense comparison" id="defenseSection">
+            <div class="card__header">
+                <div class="card__icon">🛡️</div>
+                <div>
+                    <div class="card__title">Defense & Recovery</div>
+                    <div class="card__description">Apply preprocessing defenses to remove adversarial noise</div>
+                </div>
+            </div>
+
+            <!-- Defense Controls -->
+            <div class="controls">
+                <div class="control-group">
+                    <label for="defenseMethod">Defense Method</label>
+                    <select id="defenseMethod">
+                        <option value="">Loading defense methods...</option>
+                    </select>
+                </div>
+                <button id="defendBtn" class="btn btn--defense" disabled>
+                    <span class="spinner"></span>
+                    🛡️ Apply Defense
+                </button>
+            </div>
+            <p
+                style="font-size: 11px; color: var(--text-muted); margin-top: -12px; margin-bottom: 20px; text-align: center;">
+                💡 <b>Note:</b> Defenses degrade image quality to remove noise. The recovered top-1 class might be a
+                similar/related class rather than an exact match.
+            </p>
+
+            <!-- Defense Results -->
+            <div class="results-grid">
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--success">Cleaned Image</span>
+                    </div>
+                    <div class="image-display">
+                        <img id="cleanedImg" src="" alt="Cleaned image">
+                        <span class="image-display__label image-display__label--cleaned">Cleaned</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="section-header">
+                        <span class="section-header__tag section-header__tag--success">Recovered Predictions</span>
+                    </div>
+                    <div class="predictions" id="cleanedPredictions">
+                        <p class="image-display__placeholder">Apply defense to see predictions</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Reset -->
+        <div style="text-align: center; margin-top: 8px;">
+            <button id="resetBtn" class="btn btn--outline" disabled>
+                🔄 Reset Pipeline
+            </button>
+        </div>
+
+    </main>
+
+    <!-- ═══════════ Footer ═══════════ -->
+    <footer class="footer">
+        <p>Adversarial ML Demo · Built with PyTorch & FastAPI ·
+            <a href="https://arxiv.org/abs/1706.06083" target="_blank" rel="noopener">Madry et al. (PGD)</a>
+        </p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

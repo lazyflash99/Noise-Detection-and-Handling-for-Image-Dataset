@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Test Defense Methods API</title>
+</head>
+
+<body>
+    <h1>Testing Defense Methods API</h1>
+    <div id="result" style="white-space: pre-wrap; font-family: monospace;"></div>
+
+    <script>
+        async function test() {
+            const result = document.getElementById('result');
+            try {
+                result.textContent = "Fetching from http://localhost:8000/defense-methods...\n";
+                const response = await fetch('http://localhost:8000/defense-methods');
+                result.textContent += `Response status: ${response.status}\n`;
+                result.textContent += `Response ok: ${response.ok}\n`;
+
+                const data = await response.json();
+                result.textContent += "Response JSON:\n" + JSON.stringify(data, null, 2);
+            } catch (error) {
+                result.textContent += `Error: ${error.message}\n${error.stack}`;
+            }
+        }
+
+        test();
+    </script>
+</body>
+
+</html>
