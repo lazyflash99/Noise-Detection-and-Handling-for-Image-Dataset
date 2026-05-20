@@ -1,147 +1,186 @@
-# 🧹 NoiseGuard — Image Noise Detection & Cleaning Pipeline
+# Adversarial Attack and Purification — Streamlit Application
 
-Detect and remove multiple types of image noise automatically, with a beautiful web frontend.
-
----
-
-## 📁 Project Structure
-
-```
-noise_project/
-│
-├── app.py                          ← Streamlit frontend (run this)
-├── pipeline.py                     ← Orchestrator: detect → defend
-├── requirements.txt
-│
-├── detectors/
-│   └── noise_detector.py           ← Detects noise type using image analysis
-│
-└── defenders/
-    ├── defend_gaussian.py          ← Removes Gaussian noise (Gaussian blur + NLM)
-    ├── defend_salt_pepper.py       ← Removes salt & pepper (Median filter)
-    ├── defend_blur.py              ← Sharpens blurry images (Unsharp masking)
-    ├── defend_compression.py       ← Fixes JPEG artifacts (Bilateral filter)
-    └── defend_adversarial.py       ← Removes adversarial perturbations (Ensemble)
-```
+ResNet-18 on CIFAR-100 | FGSM / PGD attacks | MimicDiffusion purification | Noise Cleaner
 
 ---
 
-## 🚀 How to Run
+## Project layout
+
+```
+adversarial_app/
+    app.py                         Entry point — 5-page sidebar navigation
+    requirements.txt
+    .streamlit/config.toml
+    weights/
+        victim_resnet18_cifar100.pth   (placed here after training or upload)
+    data/                          CIFAR-100 downloaded here on first training run
+    models/
+        classifier.py              ResNet-18 definition, CIFAR-100 class list, loader
+        attacks.py                 FGSM, PGD attack implementations
+        purification.py            MimicDiffusion purifier + cosine schedule + DDPM loader
+        image_utils.py             Preprocessing, denorm, predict, PSNR, diff maps
+        model_state.py             Shared weights management + sidebar uploader widget
+        gaussian.py                Gaussian noise removal (Non-Local Means)
+        salt_pepper.py             Salt and Pepper noise removal (Median Filter)
+    _pages/
+        home.py                    Overview and quick-start guide
+        trainer.py                 Train ResNet-18 from scratch with live charts
+        attacker.py                Adversarial attack page
+        purifier.py                MimicDiffusion purification page
+        noise_cleaner.py           Noise removal page (single image + ZIP batch)
+```
+
+---
+
+## Installation
 
 ```bash
 pip install -r requirements.txt
+```
+
+GPU is strongly recommended for the purifier (150 reverse-diffusion steps through
+a UNet per image). CPU works but is slow (~30-60 s per image on modern hardware).
+
+---
+
+## Running the app
+
+```bash
+cd adversarial_app
 streamlit run app.py
 ```
 
-Then open http://localhost:8501 in your browser.
+Open http://localhost:8501.
 
 ---
 
-## 🔍 How It Works
+## Pages
 
-### Detection Pipeline (detectors/noise_detector.py)
+### Home
 
-For each image, five features are extracted:
+Overview and quick-start guide. Shows which CIFAR-100 classes are supported.
+The model weights status widget in the sidebar appears on every page.
 
-| Feature | What it measures |
-|---|---|
-| `pixel_variance` | Overall pixel spread — high = noisy |
-| `laplacian_variance` | Edge sharpness — low = blurry |
-| `salt_pepper_ratio` | Fraction of extreme (0 or 255) pixels |
-| `high_freq_energy` | FFT energy in outer frequency ring |
-| `block_artifact_score` | Discontinuity across 8-pixel JPEG boundaries |
+### Train Classifier
 
-These are combined in a decision tree to classify each image as one of:
-- `clean` — no significant noise
-- `gaussian` — random Gaussian noise
-- `salt_pepper` — impulse/spike noise
-- `blur` — motion or defocus blur
-- `compression` — JPEG/codec block artifacts
-- `adversarial` — crafted perturbation (FGSM/PGD-style)
+Trains a ResNet-18 on CIFAR-100 from scratch inside the app.
 
-### Defense Modules
+- Hyperparameters (epochs, batch size, learning rate, weight decay, label smoothing)
+  are configurable in the UI.
+- Live loss/accuracy charts and a per-epoch log table update after each epoch.
+- Weights are saved to `weights/victim_resnet18_cifar100.pth` after every
+  checkpoint epoch and whenever a new best accuracy is reached.
+- On completion, the model cache is cleared so the Attacker and Purifier
+  pages pick up the new weights immediately.
+- 100 epochs on a T4 GPU takes ~45 minutes. On CPU, use 5-10 epochs for a demo.
 
-Each noise type gets its own dedicated defender:
+### Attacker
 
-#### Gaussian → `defend_gaussian.py`
-- Gaussian blur to suppress random noise
-- Non-Local Means (NLM) for residual cleanup
-- Preserves edges well
+1. Upload a JPEG or PNG image.
+2. Select the correct CIFAR-100 class label from the sidebar.
+3. Choose attack method (FGSM or PGD) and epsilon budget.
+4. Click **Run attack**.
+5. Compare clean vs. adversarial predictions (top-5 bars), perturbation statistics
+   (L-inf, L2, PSNR), and an amplified difference map.
+6. Download the adversarial PNG.
 
-#### Salt & Pepper → `defend_salt_pepper.py`
-- Median filter (best choice for impulse noise)
-- Applied per channel to avoid colour bleeding
+Session state is keyed to the uploaded file so switching images clears the
+previous adversarial result automatically.
 
-#### Blur → `defend_blur.py`
-- Unsharp Masking (USM) to recover lost edges
-- Threshold prevents over-sharpening clean regions
+### Purifier
 
-#### Compression → `defend_compression.py`
-- Bilateral filter (smooths flat regions, keeps real edges)
-- Targets 8×8 block discontinuities from JPEG encoding
+1. Upload a JPEG or PNG (ideally the adversarial PNG from the Attacker page).
+2. Adjust noise level (t_start) and guidance strength (lambda) in the sidebar.
+3. Click **Run purification**.
+   - First run downloads `google/ddpm-cifar10-32` from Hugging Face (~120 MB).
+   - A live progress bar counts down the reverse-diffusion steps.
+4. Compare input vs. purified predictions (top-5 bars), image quality statistics
+   (L2 shift, PSNR), and an amplified difference map.
+5. Download the purified PNG.
 
-#### Adversarial → `defend_adversarial.py`
-- **Ensemble of three methods:**
-  1. JPEG re-compression — destroys high-frequency adversarial signal
-  2. Bit-depth reduction — quantises away subtle pixel changes
-  3. Gaussian blur — low-pass filter removes fine perturbations
-- Weighted average: 50% JPEG + 25% bit-depth + 25% blur
+### Noise Cleaner
 
----
-
-## 🖥️ Frontend Features
-
-- **Single / Multiple Image upload** — side-by-side before/after comparison
-- **ZIP Dataset upload** — processes entire datasets at once
-- **Noise Distribution Chart** — visual breakdown of noise types
-- **Per-image analysis** — shows raw feature values
-- **Download cleaned images** — as a ZIP archive
-- **Cleaning strength control** — light / medium / strong
+1. Choose **Single Image** or **ZIP Batch Process** tab.
+2. Select noise type (Gaussian or Salt and Pepper) and cleaning strength
+   (light / medium / strong) from the sidebar.
+3. Upload a single image or a ZIP archive of images.
+4. Click **Process Image** or **Process Batch**.
+5. Download the cleaned image(s). Batch results include per-image previews
+   and a single ZIP download.
 
 ---
 
-## 📊 Output Report (per batch)
+## Model weights
 
-```json
-{
-  "total_images": 100,
-  "counts": {
-    "clean": 40,
-    "gaussian": 25,
-    "salt_pepper": 15,
-    "blur": 10,
-    "compression": 7,
-    "adversarial": 3
-  },
-  "percentages": {
-    "clean": 40.0,
-    "gaussian": 25.0,
-    ...
-  }
-}
-```
+### Sidebar uploader
+
+Every page has a **Model weights** section in the sidebar. If no weights file
+is found, a file uploader appears. Uploaded weights are validated (key
+compatibility with the ResNet-18 architecture) before being saved to disk.
+Invalid files are rejected with an error message.
+
+### Manual placement
+
+Copy `victim_resnet18_cifar100.pth` into `adversarial_app/weights/`.
 
 ---
 
-## ⚠️ Limitations
+## Attack methods
 
-- **Adversarial detection** is heuristic — adaptive attacks can evade it
-- **Blur reversal** is approximate; true deconvolution requires the blur kernel
-- **Mixed noise** (e.g., Gaussian + compression) is classified as the dominant type
-- No GPU required — all methods use CPU-based OpenCV
+| Method | Norm  | Key idea                                  | Default budget |
+|--------|-------|-------------------------------------------|----------------|
+| FGSM   | L-inf | Single gradient step (multi-restart)      | 16/255         |
+| PGD    | L-inf | Iterative steps with random start         | 16/255         |
 
----
-
-## 🔮 Possible Extensions
-
-- Replace heuristic detector with a trained CNN classifier
-- Add autoencoder-based denoising for learned reconstruction
-- Add adversarial attack generation (FGSM/PGD) for testing
-- Plug in a robustness evaluation module (accuracy before vs after)
-- Add PSNR / SSIM metrics comparing original vs cleaned
+Epsilon is configurable from 4/255 to 64/255 in the sidebar.
 
 ---
 
-## 🧾 Resume Description
+## Noise removal algorithms
 
-> "Developed a full-stack image noise detection and cleaning system supporting Gaussian, salt-and-pepper, blur, compression, and adversarial perturbation noise types. Built dedicated defense modules per noise class and an interactive Streamlit frontend for dataset upload, automated cleaning, and noise distribution reporting."
+| Algorithm           | Noise Type       | Method                          |
+|---------------------|------------------|---------------------------------|
+| Gaussian removal    | Gaussian noise   | GaussianBlur + Non-Local Means  |
+| Salt & Pepper removal | Salt & Pepper  | Per-channel Median Filter       |
+
+Strength levels: light, medium, strong (controls kernel sizes and NLM h-parameter).
+
+---
+
+## Purification method: MimicDiffusion
+
+Paper: arXiv 2312.04802, Algorithm 1.
+
+Backbone: `google/ddpm-cifar10-32` (pretrained on CIFAR-10, used as a
+general image prior for CIFAR-100 purification).
+
+Algorithm:
+1. Add Gaussian noise to x_adv up to timestep t_start (forward diffusion).
+2. Run DDPM reverse from t_start to 0.
+   Within [step_s=100, step_e=600], inject guidance:
+     g_long  = lambda * sign(x_adv - x_hat_0)
+     g_short = lambda * sign(x_adv - x_t)
+3. Return the denoised x_0.
+
+Recommended parameters:
+
+| Attack | t_start | lambda |
+|--------|---------|--------|
+| FGSM   | 150     | 0.8    |
+| PGD    | 150     | 0.8    |
+
+---
+
+## CIFAR-100 classes (100 total)
+
+apple, aquarium_fish, baby, bear, beaver, bed, bee, beetle, bicycle, bottle,
+bowl, boy, bridge, bus, butterfly, camel, can, castle, caterpillar, cattle,
+chair, chimpanzee, clock, cloud, cockroach, couch, crab, crocodile, cup,
+dinosaur, dolphin, elephant, flatfish, forest, fox, girl, hamster, house,
+kangaroo, keyboard, lamp, lawn_mower, leopard, lion, lizard, lobster, man,
+maple_tree, motorcycle, mountain, mouse, mushroom, oak_tree, orange, orchid,
+otter, palm_tree, pear, pickup_truck, pine_tree, plain, plate, poppy,
+porcupine, possum, rabbit, raccoon, ray, road, rocket, rose, sea, seal,
+shark, shrew, skunk, skyscraper, snail, snake, spider, squirrel, streetcar,
+sunflower, sweet_pepper, table, tank, telephone, television, tiger, tractor,
+train, trout, tulip, turtle, wardrobe, whale, willow_tree, wolf, woman, worm.
